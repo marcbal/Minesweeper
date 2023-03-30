@@ -98,7 +98,6 @@ class CombiSolver {
 
         this.currentSubGraph = -1;
         this.currentSubGraphValidStatesPrev = null;
-        this.currentSubGraphStatesCurr = null;
         this.currentSubGraphStatesNextIndex = 0;
 
         this.ticker = this.loop();
@@ -109,84 +108,104 @@ class CombiSolver {
         this.highlightCells(Object.keys(this.graph.undisToDis));
         yield null;
 
-        this.graph.generateSubGraphs();
+        this.graph.generateOrderedUndisList();
+        yield null;
 
-        while(this.startSubGraph()) {
-            yield null;
+        var listUndis = this.graph.orderedUndis;
 
-            var subGraphUndis = this.graph.subGraphsUndis[this.currentSubGraph];
-            var subGraphDis = this.graph.subGraphsDis[this.currentSubGraph];
+        var states = [];
+        var statesCorrespondingDis = [];
 
+        // initial iteration
+        for (var i = 0; i < listUndis.length; i++) {
+            var arrFalse = new Array(listUndis.length).fill(null);
+            arrFalse[i] = false;
+            var arrTrue = new Array(listUndis.length).fill(null);
+            arrTrue[i] = true;
+            states.push([arrFalse, arrTrue]);
+            statesCorrespondingDis.push(this.graph.undisToDis[listUndis[i]]);
+        }
 
-            for (var i = 0; i < subGraphUndis.length; i++) {
-                this.currentSubGraphStatesCurr = [];
-                if (i == 0) {
-                    this.currentSubGraphStatesCurr.push([false]);
-                    this.currentSubGraphStatesCurr.push([true]);
-                }
-                else {
-                    for (var validStatePrev of this.currentSubGraphValidStatesPrev) {
-                        this.currentSubGraphStatesCurr.push(validStatePrev.concat([false]));
-                        this.currentSubGraphStatesCurr.push(validStatePrev.concat([true]));
-                    }
-                }
-                this.currentSubGraphValidStatesPrev = [];
-
-                for (var stateToTest of this.currentSubGraphStatesCurr) {
-                    if (this.testCombination(stateToTest, subGraphUndis, subGraphDis)) {
-                        this.currentSubGraphValidStatesPrev.push(stateToTest);
-                        this.highlightColoredCells(stateToTest, subGraphUndis);
+        while (true) {
+            console.log(states);
+            for (var i = 0; i < states.length; i++) {
+                var listDis = statesCorrespondingDis[i];
+                var validStates = [];
+                for (var state of states[i]) {
+                    if (this.testCombination(state, listUndis, listDis)) {
+                        validStates.push(state);
+                        this.highlightColoredCells(state, listUndis);
                         yield null;
                     }
                 }
 
-                if (this.currentSubGraphValidStatesPrev.length == 0) {
-                    console.error("None of the combinations were valid. This is not normal.", this);
-                    return;
-                }
-
+                states[i] = validStates;
             }
 
-            var fullProba = this.currentSubGraphValidStatesPrev.length;
-            var countMines = 0;
-            var subGraphProba = new Array(subGraphUndis.length).fill(0);
-            for (var validState of this.currentSubGraphValidStatesPrev) {
-                for (var i = 0; i < validState.length; i++) {
-                    if (validState[i]) {
-                        subGraphProba[i]++;
-                        countMines++;
-                    }
+            if (states.length == 1)
+                break; // we have all the valid states
+
+            // merge sets of valid states 2 by 2
+            var nextStates = [];
+            var nextStatesCorrespondingDis = [];
+            for (var i = 0; i < states.length; i += 2) {
+                if (i + 1 < states.length) {
+                    nextStates.push(this.mergeStateLists(states[i], states[i + 1]));
+                    nextStatesCorrespondingDis.push(this.mergeCellsSet(statesCorrespondingDis[i], statesCorrespondingDis[i + 1]));
+                }
+                else {
+                    nextStates.push(states[i]);
+                    nextStatesCorrespondingDis.push(statesCorrespondingDis[i]);
                 }
             }
-            var hasSolvableCells = false;
-            for (var i = 0; i < subGraphUndis.length; i++) {
+
+            states = nextStates;
+            statesCorrespondingDis = nextStatesCorrespondingDis;
+
+        }
+
+
+
+        var validStates = states[0];
+
+        var fullProba = validStates.length;
+        var countMines = 0;
+        var subGraphProba = new Array(listUndis.length).fill(0);
+        for (var validState of validStates) {
+            for (var i = 0; i < validState.length; i++) {
+                if (validState[i]) {
+                    subGraphProba[i]++;
+                    countMines++;
+                }
+            }
+        }
+        var hasSolvableCells = false;
+        for (var i = 0; i < listUndis.length; i++) {
+            var probaCount = subGraphProba[i];
+            if (probaCount == 0 || probaCount == fullProba) {
+                hasSolvableCells = true;
+                break;
+            }
+        }
+        if (hasSolvableCells) {
+            this.end();
+            for (var i = 0; i < listUndis.length; i++) {
                 var probaCount = subGraphProba[i];
-                if (probaCount == 0 || probaCount == fullProba) {
-                    hasSolvableCells = true;
-                    break;
-                }
+                var cell = this.graph.toCell(listUndis[i]);
+                if (probaCount == validStates.length)
+                    cell.rightClick(true);
+                else if (probaCount == 0)
+                    cell.leftClick(true);
             }
-            if (hasSolvableCells) {
-                this.end();
-                for (var i = 0; i < subGraphUndis.length; i++) {
-                    var probaCount = subGraphProba[i];
-                    var cell = this.graph.toCell(subGraphUndis[i]);
-                    if (probaCount == this.currentSubGraphValidStatesPrev.length)
-                        cell.rightClick(true);
-                    else if (probaCount == 0)
-                        cell.leftClick(true);
-                }
-                return;
+            return;
+        }
+        else {
+            // add proba count
+            for (var i = 0; i < listUndis.length; i++) {
+                var probaCount = subGraphProba[i];
+                this.undisProba[listUndis[i]] = probaCount / fullProba;
             }
-            else {
-                // add proba count
-                for (var i = 0; i < subGraphUndis.length; i++) {
-                    var probaCount = subGraphProba[i];
-                    this.undisProba[subGraphUndis[i]] = probaCount / fullProba;
-                }
-                this.undisRemainingMines -= countMines / fullProba;
-                this.graph.removeSubGraph(this.currentSubGraph);
-            }
+            this.undisRemainingMines -= countMines / fullProba;
         }
 
         // compute remaining probas
@@ -238,8 +257,16 @@ class CombiSolver {
 
     testCombination(state, subGraphUndis, subGraphDis) {
         var mapToState = {};
+        var countTrue = 0
         for (var i = 0; i < subGraphUndis.length; i++) {
+            if (i < state.length && state[i] === true) {
+                countTrue++;
+            }
             mapToState[subGraphUndis[i]] = i < state.length ? state[i] : null;
+        }
+        if (countTrue > this.undisRemainingMines) {
+            // you cannot have more mines than the number not yet found
+            return false;
         }
 
         for (var disCell of subGraphDis) {
@@ -262,16 +289,22 @@ class CombiSolver {
     }
 
 
-    startSubGraph() {
-        this.currentSubGraph = this.graph.getSmallestSubGraphIndex();
-        if (this.currentSubGraph == -1)
-            return false;
-        this.currentSubGraphValidStatesPrev = [];
-        this.currentSubGraphStatesCurr = [];
-        this.currentSubGraphStatesNextIndex = 0;
+    mergeStateLists(stateList1, stateList2) {
+        var retStateList = [];
+        for (var state1 of stateList1) {
+            for (var state2 of stateList2) {
+                var state = [];
+                for (var i = 0; i < state1.length && i < state2.length; i++) {
+                    state.push(state1[i] !== null ? state1[i] : state2[i]);
+                }
+                retStateList.push(state);
+            }
+        }
+        return retStateList;
+    }
 
-        this.highlightCells(this.graph.subGraphsUndis[this.currentSubGraph]);
-        return true;
+    mergeCellsSet(cells1, cells2) {
+        return cells1.concat(cells2.filter(i => cells1.indexOf(i) < 0));
     }
 
 
@@ -329,8 +362,7 @@ class CombiGraph {
         this.disValue = {};
         this.probaValues = {};
         this.cellObjs = {};
-        this.subGraphsUndis = [];
-        this.subGraphsDis = [];
+        this.orderedUndis = [];
     }
 
     addLink(disCell, undisCell) {
@@ -371,56 +403,78 @@ class CombiGraph {
 
 
 
-    generateSubGraphs() {
-        var allUndis = Object.keys(this.undisToDis);
+    generateOrderedUndisList() {
+        var subGraphUndis = Object.keys(this.undisToDis);
+        var subGraphDis = Object.keys(this.disToUndis);
 
-        while (true) {
-            if (allUndis.length == 0)
-                break;
-            var subGraphUndis = [];
-            var subGraphDis = [];
-            subGraphUndis.push(allUndis.pop());
-            for(var i = 0; i < subGraphUndis.length; i++) {
-                var undisCell = subGraphUndis[i];
-                for (var dis of this.undisToDis[undisCell]) {
-                    if (subGraphDis.includes(dis))
-                        continue;
-                    subGraphDis.push(dis);
-                    for (var otherUndis of this.disToUndis[dis]) {
-                        if (!allUndis.includes(otherUndis))
-                            continue;
-                        allUndis.splice(allUndis.indexOf(otherUndis), 1);
-                        subGraphUndis.push(otherUndis);
-                    }
+        var proximities = {};
+        var distances = {};
+        var mergedProximities = {};
+        var mergedDistances = {};
+        for (var undis1 of subGraphUndis) {
+            proximities[undis1] = {};
+            distances[undis1] = {};
+            mergedProximities[undis1] = 0;
+            mergedDistances[undis1] = 10000; // big enough number
+            for (var undis2 of subGraphUndis) {
+                distances[undis1][undis2] = this.distance(undis1, undis2);
+                proximities[undis1][undis2] = this.disProximity(undis1, undis2);
+            }
+        }
+
+        // the actual sorting
+        for (var i = 0; i < subGraphUndis.length - 1; i++) {
+            var undis1 = subGraphUndis[i];
+
+            var maxProximity = -1;
+            var minDistance = 10000;
+            var maxIndex = i + 1;
+            for (var j = i + 1; j < subGraphUndis.length; j++) {
+                var undis2 = subGraphUndis[j];
+                // give bonus to undis1 as proximity
+                mergedProximities[undis2] = Math.max(mergedProximities[undis2], proximities[undis1][undis2]);
+                mergedDistances[undis2] = Math.min(mergedDistances[undis2], distances[undis1][undis2]);
+                if (mergedProximities[undis2] > maxProximity
+                    || (mergedProximities[undis2] == maxProximity
+                        && mergedDistances[undis2] < minDistance
+                        )
+                    ) {
+                    maxProximity = mergedProximities[undis2];
+                    minDistance = mergedDistances[undis2];
+                    maxIndex = j;
                 }
             }
-
-
-            this.subGraphsUndis.push(subGraphUndis);
-            this.subGraphsDis.push(subGraphDis);
-        }
-    }
-
-
-    getSmallestSubGraphIndex() {
-        if (this.subGraphsUndis.length == 0)
-            return -1;
-        var min = this.subGraphsUndis[0].length;
-        var minI = 0;
-        for (var i = 1; i < this.subGraphsUndis.length; i++) {
-            var l = this.subGraphsUndis[i].length;
-            if (l < min) {
-                minI = i;
-                min = l;
+            if (maxIndex != i + 1) {
+                var tmp = subGraphUndis[i + 1];
+                subGraphUndis[i + 1] = subGraphUndis[maxIndex];
+                subGraphUndis[maxIndex] = tmp;
             }
         }
-        return minI;
+
+
+
+        this.orderedUndis = subGraphUndis;
+    }
+
+    /**
+        Determine the proximity of 2 undiscovered cells, based on the number of
+        discovered cells they have in common
+        */
+    disProximity(undis1, undis2) {
+        var count = 0;
+        var dis2List = this.undisToDis[undis2];
+        for (var dis1 of this.undisToDis[undis1]) {
+            if (dis2List.includes(dis1))
+                count++;
+        }
+        return count;
     }
 
 
-    removeSubGraph(index) {
-        this.subGraphsUndis.splice(index, 1);
-        this.subGraphsDis.splice(index, 1);
+    distance(undis1, undis2) {
+        var c1 = this.toCell(undis1);
+        var c2 = this.toCell(undis2);
+        return Math.abs(c1.r - c2.r) + Math.abs(c1.c - c2.c)
     }
 
 
