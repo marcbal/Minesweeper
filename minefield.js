@@ -60,7 +60,7 @@ class Cell {
 		this.setDOMClass(this.isMarked, "marked");
 		this.setDOMClass(this.isMineRevealed, "mine");
 		this.setInnerHTML(
-				this.isDiscovered && !this.isMine ? this.minesAround
+				this.isDiscovered && !this.isMine && this.minesAround > 0 ? this.minesAround
 				: this.solverProba !== null ? (Math.round(this.solverProba * 100) + "%")
 				: "");
 		// discover and marking hints

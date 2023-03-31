@@ -142,7 +142,30 @@ class CombiSolver {
                 states[i] = validStates;
             }
 
-            if (states.length == 1)
+            // intermetiate check for solved cells
+            var hasSolvableCells = false;
+            var finalState = new Array(listUndis.length).fill(null);
+            for (var subStates of states) {
+                var subStateSol = this.verifySolvedCells(subStates);
+                if (subStateSol.solved) {
+                    hasSolvableCells = true;
+                    finalState = this.mergeStateLists([finalState], [subStateSol.solution])[0];
+                }
+            }
+            if (hasSolvableCells) {
+                this.end();
+                for (var i = 0; i < listUndis.length; i++) {
+                    var cell = this.graph.toCell(listUndis[i]);
+                    if (finalState[i] === true)
+                        cell.rightClick(true);
+                    else if (finalState[i] === false)
+                        cell.leftClick(true);
+                }
+                return;
+            }
+
+
+            if (states.length <= 1)
                 break; // we have all the valid states
 
             // merge sets of valid states 2 by 2
@@ -165,53 +188,70 @@ class CombiSolver {
         }
 
 
+        if (states.length > 0) {
+            var validStates = states[0];
 
-        var validStates = states[0];
-
-        var fullProba = validStates.length;
-        var countMines = 0;
-        var subGraphProba = new Array(listUndis.length).fill(0);
-        for (var validState of validStates) {
-            for (var i = 0; i < validState.length; i++) {
-                if (validState[i]) {
-                    subGraphProba[i]++;
-                    countMines++;
+            var fullProba = validStates.length;
+            var countMines = 0;
+            var subGraphProba = new Array(listUndis.length).fill(0);
+            for (var validState of validStates) {
+                for (var i = 0; i < validState.length; i++) {
+                    if (validState[i]) {
+                        subGraphProba[i]++;
+                        countMines++;
+                    }
                 }
             }
-        }
-        var hasSolvableCells = false;
-        for (var i = 0; i < listUndis.length; i++) {
-            var probaCount = subGraphProba[i];
-            if (probaCount == 0 || probaCount == fullProba) {
-                hasSolvableCells = true;
-                break;
-            }
-        }
-        if (hasSolvableCells) {
-            this.end();
+            var hasSolvableCells = false;
             for (var i = 0; i < listUndis.length; i++) {
                 var probaCount = subGraphProba[i];
-                var cell = this.graph.toCell(listUndis[i]);
-                if (probaCount == validStates.length)
-                    cell.rightClick(true);
-                else if (probaCount == 0)
-                    cell.leftClick(true);
+                if (probaCount == 0 || probaCount == fullProba) {
+                    hasSolvableCells = true;
+                    break;
+                }
             }
-            return;
-        }
-        else {
-            // add proba count
-            for (var i = 0; i < listUndis.length; i++) {
-                var probaCount = subGraphProba[i];
-                this.undisProba[listUndis[i]] = probaCount / fullProba;
+            if (hasSolvableCells) {
+                this.end();
+                for (var i = 0; i < listUndis.length; i++) {
+                    var probaCount = subGraphProba[i];
+                    var cell = this.graph.toCell(listUndis[i]);
+                    if (probaCount == validStates.length)
+                        cell.rightClick(true);
+                    else if (probaCount == 0)
+                        cell.leftClick(true);
+                }
+                return;
             }
-            this.undisRemainingMines -= countMines / fullProba;
+            else {
+                // add proba count
+                for (var i = 0; i < listUndis.length; i++) {
+                    var probaCount = subGraphProba[i];
+                    this.undisProba[listUndis[i]] = probaCount / fullProba;
+                }
+                this.undisRemainingMines -= countMines / fullProba;
+            }
         }
+
 
         // compute remaining probas
         var remainingCells = this.field.getCells(c => !c.isDiscovered && !c.isMarked
                 && !(this.graph.toKey(c) in this.undisProba));
         var remainingCellsCount = remainingCells.length;
+
+        // check if remaining mines are safe or are bombs for sure.
+        if (remainingCellsCount > 0 &&
+            (this.undisRemainingMines == 0 || this.undisRemainingMines == remainingCellsCount)) {
+            var areSafe = this.undisRemainingMines == 0;
+            this.end();
+            for (var remainingCell of remainingCells) {
+                if (areSafe)
+                    remainingCell.leftClick(true);
+                else
+                    remainingCell.rightClick(true);
+            }
+            return;
+        }
+
         var remainingProba = this.undisRemainingMines / remainingCellsCount;
         for (var remainingCell of remainingCells) {
             this.undisProba[this.graph.addCell(remainingCell)] = remainingProba;
@@ -233,7 +273,7 @@ class CombiSolver {
         }
         this.field.renderDOM();
         this.field.lockInteractions = false;
-        yield null;
+
 
         while (this.field.getCells(c => c.isDiscovered && c.solverProba !== null).length == 0) {
             yield null;
@@ -250,6 +290,40 @@ class CombiSolver {
         var loopRet = this.ticker.next();
         if (loopRet.done)
             this.end();
+    }
+
+
+
+    verifySolvedCells(states) {
+        var hasSolved = false;
+        var solution = [];
+        if (states.length > 0) {
+            var stateSize = states[0].length;
+            var stateCount = states.length;
+            solution = new Array(stateSize).fill(null);
+            for (var i = 0; i < stateSize; i++) {
+                var countMine = 0;
+                var countSafe = 0;
+                for (var state of states) {
+                    if (state[i] === true)
+                        countMine++;
+                    else if (state[i] === false)
+                        countSafe++;
+                }
+                if (countMine == stateCount) {
+                    hasSolved = true;
+                    solution[i] = true;
+                }
+                else if (countSafe == stateCount) {
+                    hasSolved = true;
+                    solution[i] = false;
+                }
+            }
+        }
+        return {
+            "solved": hasSolved,
+            "solution": solution
+        }
     }
 
 
