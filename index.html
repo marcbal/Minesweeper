@@ -6,165 +6,66 @@
         <link rel="stylesheet" href="style.css"/>
     </head>
     <body>
-		<nav>
-			Grille :
-			<input id="input-width" type="number" min="4" max="30" value="8"/>
-			×
-			<input id="input-height" type="number" min="4" max="30" value="8"/>
-			<br>
-			Bombes :
-			<input id="input-mines" type="number" min="3" max="500" value="10"/>
-			<br>
-			<button onclick="changeSettings(8, 8, 10);">Small</button>
-			<button onclick="changeSettings(16, 16, 40);">Medium</button>
-			<button onclick="changeSettings(30, 16, 99);">Large</button>
-			<br>
-			<button onclick="generateGrid();">New grid</button>
-			<br>
-			<br>
-			<table id="solver-ctrl">
-				<tr>
-					<td></td>
-					<td><img src="img/eye-white.svg" style="height: 1.2em;" alt="Show"/></td>
-					<td><img src="img/work-white.svg" style="height: 1.2em;" alt="Auto solve"/></td>
-				</tr>
-				<tr>
-					<td class="solver-cell clicked b1" title="Clickable cells">1</td>
-					<td><input id="solver-clickable-show" type="checkbox" title="Show clickable cells"
-							onchange="toggleDiscoverHints(true)"/></td>
-					<td><input id="solver-clickable-auto" type="checkbox" title="Auto-click cells"
-                            onchange="toggleAutoSolveDiscoverable()"/></td>
-				</tr>
-				<tr>
-					<td class="solver-cell marked" title="Markable cells"></td>
-					<td><input id="solver-markable-show" type="checkbox" title="Show markable cells"
-							onchange="toggleMarkingHints(true)"/></td>
-					<td><input id="solver-markable-auto" type="checkbox" title="Auto-mark cells"
-                            onchange="toggleAutoSolveMarkable()"/></td>
-				</tr>
-				<tr>
-					<td class="solver-cell" title="Combination solver"></td>
+        <nav>
+            Grille :
+            <input id="input-width" type="number" min="4" max="30" value="8"/>
+            ×
+            <input id="input-height" type="number" min="4" max="30" value="8"/>
+            <br>
+            Bombes :
+            <input id="input-mines" type="number" min="3" max="500" value="10"/>
+            <br>
+            <button onclick="changeSettings(8, 8, 10);">Small</button>
+            <button onclick="changeSettings(16, 16, 40);">Medium</button>
+            <button onclick="changeSettings(30, 16, 99);">Large</button>
+            <br>
+            <button onclick="generateGrid();">New grid</button>
+            <br>
+            <br>
+            <table id="solver-ctrl">
+                <tr>
                     <td></td>
-					<td><input id="solver-combi-auto" type="checkbox" title="Auto-solve combinations"
+                    <td><img src="img/eye-white.svg" style="height: 1.2em;" alt="Show"/></td>
+                    <td><img src="img/work-white.svg" style="height: 1.2em;" alt="Auto solve"/></td>
+                </tr>
+                <tr>
+                    <td class="solver-cell clicked b1" title="Clickable cells">1</td>
+                    <td><input id="solver-clickable-show" type="checkbox" title="Show clickable cells"
+                            onchange="toggleDiscoverHints(true)"/></td>
+                    <td><input id="solver-clickable-auto" type="checkbox" title="Auto-click cells"
+                            onchange="toggleAutoSolveDiscoverable()"/></td>
+                </tr>
+                <tr>
+                    <td class="solver-cell marked" title="Markable cells"></td>
+                    <td><input id="solver-markable-show" type="checkbox" title="Show markable cells"
+                            onchange="toggleMarkingHints(true)"/></td>
+                    <td><input id="solver-markable-auto" type="checkbox" title="Auto-mark cells"
+                            onchange="toggleAutoSolveMarkable()"/></td>
+                </tr>
+                <tr>
+                    <td class="solver-cell" title="Combination solver"></td>
+                    <td></td>
+                    <td><input id="solver-combi-auto" type="checkbox" title="Auto-solve combinations"
                             onchange="toggleAutoSolveCombi()"/></td>
-				</tr>
-			</table>
-			<img src="img/work-white.svg" style="height: 1.2em; vertical-align: middle;"
+                </tr>
+            </table>
+            <img src="img/work-white.svg" style="height: 1.2em; vertical-align: middle;"
                     alt="Auto solve speed" title="Auto solve speed"/>
-			<input id="solver-auto-speed" type="number" min="0" max="100" value="0"
+            <input id="solver-auto-speed" type="number" min="0" max="100" value="0"
                     onchange="updateAutoSolveSpeed()"/> cps
 
-			<br>
-			<p id="timer">0:00.0</p>
-			<p id="bomb-count">0/0</p>
-		</nav>
-		<main>
-			<table id="grid"></table>
-		</main>
+            <br>
+            <p id="timer">0:00.0</p>
+            <p id="bomb-count">0/0</p>
+        </nav>
+        <main>
+            <table id="grid"></table>
+        </main>
 
     </body>
-	<script type="text/javascript" src="js/util.js"></script>
-	<script type="text/javascript" src="js/cell.js"></script>
-	<script type="text/javascript" src="js/minefield.js"></script>
-	<script type="text/javascript" src="js/solver.js"></script>
-    <script type="text/javascript">
-        var gridDOM = document.getElementById("grid");
-		var timerDOM = document.getElementById("timer");
-		var bombCountDOM = document.getElementById("bomb-count");
-
-		var input_width = document.getElementById("input-width");
-		var input_height = document.getElementById("input-height");
-		var input_mines = document.getElementById("input-mines");
-
-        var checkbox_solver_clickable_show = document.getElementById("solver-clickable-show");
-        var checkbox_solver_clickable_auto = document.getElementById("solver-clickable-auto");
-        var checkbox_solver_markable_show = document.getElementById("solver-markable-show");
-        var checkbox_solver_markable_auto = document.getElementById("solver-markable-auto");
-        var checkbox_solver_combi_auto = document.getElementById("solver-combi-auto");
-
-        var input_solver_auto_speed = document.getElementById("solver-auto-speed");
-
-		var field = null;
-
-        var solver = new Solver();
-        toggleAutoSolveDiscoverable();
-        toggleAutoSolveMarkable();
-        toggleAutoSolveCombi();
-        updateAutoSolveSpeed();
-
-		function changeSettings(width, height, mines) {
-			input_width.value = width;
-			input_height.value = height;
-			input_mines.value = mines;
-		}
-
-        function generateGrid() {
-
-			var width = input_width.value;
-			var height = input_height.value;
-			var maxMines = width * height - 9;
-			var minesCount = input_mines.value;
-			if (minesCount > maxMines) {
-				minesCount = maxMines;
-				input_mines.value = maxMines;
-			}
-
-            if (field !== null) {
-                field.endGame(false);
-            }
-			field = new Minefield(width, height, minesCount);
-			field.initDOM(gridDOM, timerDOM, bombCountDOM);
-            solver.setField(field);
-            toggleDiscoverHints(false);
-            toggleMarkingHints(false);
-        }
-
-        function toggleDiscoverHints(render) {
-            field.discoverHints = checkbox_solver_clickable_show.checked;
-            if (render)
-                field.renderDOM();
-        }
-
-        function toggleMarkingHints(render) {
-            field.markingHints = checkbox_solver_markable_show.checked;
-            if (render)
-                field.renderDOM();
-        }
-
-
-        function toggleAutoSolveDiscoverable() {
-            solver.autoSolveDiscoverable = checkbox_solver_clickable_auto.checked;
-        }
-
-        function toggleAutoSolveMarkable() {
-            solver.autoSolveMarkable = checkbox_solver_markable_auto.checked;
-        }
-
-        function toggleAutoSolveCombi() {
-            solver.autoSolveCombi = checkbox_solver_combi_auto.checked;
-        }
-
-        function updateAutoSolveSpeed() {
-            solver.updateInterval(input_solver_auto_speed.value);
-        }
-
-
-
-
-        generateGrid();
-
-        /*
-        field.minesCount = 3;
-        field.grid[1][1].setMine();
-        field.grid[2][1].setMine();
-        field.grid[2][2].setMine();
-		field.minesPlaced = true;
-
-		field.renderDOM();
-		if (field.timerDOM !== null) {
-			field.timeStart = Date.now();
-			field.timerInterval = setInterval(() => field.updateTimerDisplay(), 50);
-		}
-        */
-    </script>
+    <script type="text/javascript" src="js/util.js"></script>
+    <script type="text/javascript" src="js/cell.js"></script>
+    <script type="text/javascript" src="js/minefield.js"></script>
+    <script type="text/javascript" src="js/solver.js"></script>
+    <script type="text/javascript" src="js/main.js"></script>
 </html>
