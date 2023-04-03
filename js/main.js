@@ -84,8 +84,10 @@ function updateAutoSolveSpeed() {
 generateGrid();
 
 /*
-field.minesCount = 3;
-field.grid[1][1].setMine();
+field.minesCount = 5;
+field.grid[0][0].setMine();
+field.grid[0][1].setMine();
+field.grid[1][0].setMine();
 field.grid[2][1].setMine();
 field.grid[2][2].setMine();
 field.minesPlaced = true;

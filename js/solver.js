@@ -97,6 +97,7 @@ class CombiSolver {
         this.graph.generateOrderedUndisList();
         this.undisProba = {};
         this.undisRemainingMines = this.field.minesCount - this.field.getCells(c => c.isMarked).length;
+        this.otherUndisCount = this.field.getCells(c => !c.isDiscovered && !c.isMarked && !(c.key in this.graph.undisToDis)).length;
 
         this.ticker = this.loop();
     }
@@ -189,7 +190,7 @@ class CombiSolver {
                     var states2GroupedByUndisOfCommonDis = this.groupStatesBySubsetState(states2, indexOfUndisOfCommonDis);
                     var len1 = Object.keys(states1GroupedByUndisOfCommonDis).length;
                     var len2 = Object.keys(states2GroupedByUndisOfCommonDis).length;
-                    console.log("  Merging " + len1 + " × " + len2 + " keys. Should give max " + (len1 * len2) + " merged keys.");
+                    //console.log("  Merging " + len1 + " × " + len2 + " keys. Should give max " + (len1 * len2) + " merged keys.");
                     var finalMergedStateList = [];
                     var countValidMergedKeys = 0;
                     for (var group1key of Object.keys(states1GroupedByUndisOfCommonDis)) {
@@ -203,7 +204,7 @@ class CombiSolver {
                             }
                         }
                     }
-                    console.log("    Valid merged keys: " + countValidMergedKeys + "; Merged states count: " + finalMergedStateList.length);
+                    //console.log("    Valid merged keys: " + countValidMergedKeys + "; Merged states count: " + finalMergedStateList.length);
 
                     nextStates.push(finalMergedStateList);
                     nextStatesCorrespondingDis.push(disSet1.union(disSet2));
@@ -384,12 +385,15 @@ class CombiSolver {
     }
 
     testMinesCount(state) {
-        var countMines = 0
+        var countMines = 0;
+        var countUnknown = 0;
         for (var s of state) {
             if (s == "m")
                 countMines++;
+            else if (s == "-")
+                countUnknown++;
         }
-        return countMines <= this.undisRemainingMines;
+        return countMines <= this.undisRemainingMines && countMines + countUnknown >= this.undisRemainingMines - this.otherUndisCount;
     }
 
     testCombination(state, subGraphUndis, subGraphDis) {
@@ -573,10 +577,11 @@ class CombiGraph {
                 var undis2 = subGraphUndis[j];
                 // give bonus to undis1 as proximity
                 mergedProximities[undis2] = Math.max(mergedProximities[undis2], proximities[undis1][undis2]);
+                var consideredDistance = Math.min(mergedDistances[undis2], distances[undis1][undis2] <= 1 ? 0 : distances[undis1][undis2]);
                 mergedDistances[undis2] = Math.min(mergedDistances[undis2], distances[undis1][undis2]);
                 if (mergedProximities[undis2] > maxProximity
                     || (mergedProximities[undis2] == maxProximity
-                        && mergedDistances[undis2] < minDistance
+                        && consideredDistance < minDistance
                         )
                     ) {
                     maxProximity = mergedProximities[undis2];
@@ -601,7 +606,7 @@ class CombiGraph {
         discovered cells they have in common
         */
     disProximity(undis1, undis2) {
-        return this.undisToDis[undis1].union(this.undisToDis[undis2]).size;
+        return this.undisToDis[undis1].intersection(this.undisToDis[undis2]).size;
     }
 
 
