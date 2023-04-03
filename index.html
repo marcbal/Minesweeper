@@ -70,7 +70,7 @@
             }
 
             #grid td.marked:not(.clicked), .solver-cell.marked {
-				background: #444 url("flag.png") center/70% no-repeat;
+				background: #444 url("img/flag.png") center/70% no-repeat;
             }
             #grid td:not(.clicked):hover {
                 background-color: #666;
@@ -131,7 +131,7 @@
 
 
             #grid td.mine:not(.marked) {
-				background: #444 url("mine.png") center/70% no-repeat;
+				background: #444 url("img/mine.png") center/70% no-repeat;
             }
 
             body.loose #grid td.mine:not(.marked) {
@@ -185,8 +185,8 @@
 			<table id="solver-ctrl">
 				<tr>
 					<td></td>
-					<td><img src="eye-white.svg" style="height: 1.2em;" alt="Show"/></td>
-					<td><img src="work-white.svg" style="height: 1.2em;" alt="Auto solve"/></td>
+					<td><img src="img/eye-white.svg" style="height: 1.2em;" alt="Show"/></td>
+					<td><img src="img/work-white.svg" style="height: 1.2em;" alt="Auto solve"/></td>
 				</tr>
 				<tr>
 					<td class="solver-cell clicked b1" title="Clickable cells">1</td>
@@ -209,7 +209,7 @@
                             onchange="toggleAutoSolveCombi()"/></td>
 				</tr>
 			</table>
-			<img src="work-white.svg" style="height: 1.2em; vertical-align: middle;"
+			<img src="img/work-white.svg" style="height: 1.2em; vertical-align: middle;"
                     alt="Auto solve speed" title="Auto solve speed"/>
 			<input id="solver-auto-speed" type="number" min="0" max="100" value="0"
                     onchange="updateAutoSolveSpeed()"/> cps
@@ -223,8 +223,10 @@
 		</main>
 
     </body>
-	<script type="text/javascript" src="minefield.js"></script>
-	<script type="text/javascript" src="solver.js"></script>
+	<script type="text/javascript" src="js/util.js"></script>
+	<script type="text/javascript" src="js/cell.js"></script>
+	<script type="text/javascript" src="js/minefield.js"></script>
+	<script type="text/javascript" src="js/solver.js"></script>
     <script type="text/javascript">
         var gridDOM = document.getElementById("grid");
 		var timerDOM = document.getElementById("timer");
@@ -311,11 +313,18 @@
 
         generateGrid();
 
+        /*
+        field.minesCount = 3;
+        field.grid[1][1].setMine();
+        field.grid[2][1].setMine();
+        field.grid[2][2].setMine();
+		field.minesPlaced = true;
 
+		field.renderDOM();
+		if (field.timerDOM !== null) {
+			field.timeStart = Date.now();
+			field.timerInterval = setInterval(() => field.updateTimerDisplay(), 50);
+		}
+        */
     </script>
-    <!--
-        TODO hints must show target cells, not source (already discovered) cells.
-        TODO try to work on pattern solver
-        TODO try to work on probability solver
-    -->
 </html>

@@ -4,6 +4,7 @@ class Solver {
         this.autoSolveDiscoverable = false;
         this.autoSolveMarkable = false;
         this.autoSolveCombi = false;
+        this.field = null;
 
         this.combiSolver = null;
     }
@@ -87,18 +88,15 @@ class CombiSolver {
         this.field.lockInteractions = true;
 
         this.ended = false;
-        this.graph = new CombiGraph();
+        this.graph = new CombiGraph(field);
         for (var undisCell of this.field.getCells(c => !c.isDiscovered && !c.isMarked)) {
             for (var disCell of undisCell.getAround(c => c.isDiscovered && c.minesAround > 0)) {
                 this.graph.addLink(disCell, undisCell);
             }
         }
+        this.graph.generateOrderedUndisList();
         this.undisProba = {};
         this.undisRemainingMines = this.field.minesCount - this.field.getCells(c => c.isMarked).length;
-
-        this.currentSubGraph = -1;
-        this.currentSubGraphValidStatesPrev = null;
-        this.currentSubGraphStatesNextIndex = 0;
 
         this.ticker = this.loop();
     }
@@ -108,43 +106,30 @@ class CombiSolver {
         this.highlightCells(Object.keys(this.graph.undisToDis));
         yield null;
 
-        this.graph.generateOrderedUndisList();
-        yield null;
-
         var listUndis = this.graph.orderedUndis;
+        console.log("Starting new solver instance. Order of cells: ", listUndis);
 
-        var states = [];
-        var statesCorrespondingDis = [];
+        var states = new Array(listUndis.length);
+        var statesCorrespondingDis = new Array(listUndis.length);
 
         // initial iteration
         for (var i = 0; i < listUndis.length; i++) {
-            var arrFalse = new Array(listUndis.length).fill(null);
-            arrFalse[i] = false;
-            var arrTrue = new Array(listUndis.length).fill(null);
-            arrTrue[i] = true;
-            states.push([arrFalse, arrTrue]);
-            statesCorrespondingDis.push(this.graph.undisToDis[listUndis[i]]);
+            states[i] = [];
+            var base = "-".repeat(listUndis.length);
+            states[i].push(base.replaceAt(i, "s"));
+            states[i].push(base.replaceAt(i, "m"));
+            statesCorrespondingDis[i] = this.graph.undisToDis[listUndis[i]];
+            // pre-filter on first iteration
+            states[i] = yield* this.filterValidCombination(states[i], listUndis, statesCorrespondingDis[i]);
         }
 
         while (true) {
-            console.log(states);
-            for (var i = 0; i < states.length; i++) {
-                var listDis = statesCorrespondingDis[i];
-                var validStates = [];
-                for (var state of states[i]) {
-                    if (this.testCombination(state, listUndis, listDis)) {
-                        validStates.push(state);
-                        this.highlightColoredCells(state, listUndis);
-                        yield null;
-                    }
-                }
+            //console.log("Starting iteration of solver.")
+            //console.log("  Valid sub-states count: " + states.map(s => s.length).join(", ") + " (sum= " + states.map(s => s.length).reduce((a, v) => a + v, 0) + ")");
 
-                states[i] = validStates;
-            }
-
-            // intermetiate check for solved cells
+            // check for already solved cells
             var hasSolvableCells = false;
-            var finalState = new Array(listUndis.length).fill(null);
+            var finalState = "-".repeat(listUndis.length);
             for (var subStates of states) {
                 var subStateSol = this.verifySolvedCells(subStates);
                 if (subStateSol.solved) {
@@ -154,11 +139,12 @@ class CombiSolver {
             }
             if (hasSolvableCells) {
                 this.end();
+                console.log("  Found premature solution: " + finalState);
                 for (var i = 0; i < listUndis.length; i++) {
-                    var cell = this.graph.toCell(listUndis[i]);
-                    if (finalState[i] === true)
+                    var cell = this.field.keyToCell[listUndis[i]];
+                    if (finalState[i] == "m")
                         cell.rightClick(true);
-                    else if (finalState[i] === false)
+                    else if (finalState[i] == "s")
                         cell.leftClick(true);
                 }
                 return;
@@ -166,15 +152,61 @@ class CombiSolver {
 
 
             if (states.length <= 1)
-                break; // we have all the valid states
+                break; // we have all the valid states in one set, or no states at all
 
             // merge sets of valid states 2 by 2
             var nextStates = [];
             var nextStatesCorrespondingDis = [];
             for (var i = 0; i < states.length; i += 2) {
                 if (i + 1 < states.length) {
-                    nextStates.push(this.mergeStateLists(states[i], states[i + 1]));
-                    nextStatesCorrespondingDis.push(this.mergeCellsSet(statesCorrespondingDis[i], statesCorrespondingDis[i + 1]));
+                    var states1 = states[i];
+                    var disSet1 = statesCorrespondingDis[i];
+                    var states2 = states[i + 1];
+                    var disSet2 = statesCorrespondingDis[i + 1];
+
+                    /*
+                    The improvement below aims at filtering a subpart of the states
+                    from the previous loop, before the actual merge of all the states
+                    happends, so we save as much as possible iteration on testing the
+                    validity of each merged states later.
+
+                    The considered subparts to be tested are the cells that affects
+                    cells of the opposing subset (the common discovered cells)
+                    */
+
+                    var commonDis = disSet1.intersection(disSet2);
+                    var disUnion = disSet1.union(disSet2);
+
+                    var undisOfCommonDisSet = [...commonDis].map(dis => this.graph.disToUndis[dis])
+                            .reduce((acc, undisSet) => {
+                                acc.addAll(undisSet);
+                                return acc;
+                            }, new Set());
+                    //console.log("  Merging with common discovered cells: " + ([...undisOfCommonDisSet].join(", ")));
+                    var indexOfUndisOfCommonDis = [...undisOfCommonDisSet].map(undis => listUndis.indexOf(undis));
+
+                    var states1GroupedByUndisOfCommonDis = this.groupStatesBySubsetState(states1, indexOfUndisOfCommonDis);
+                    var states2GroupedByUndisOfCommonDis = this.groupStatesBySubsetState(states2, indexOfUndisOfCommonDis);
+                    var len1 = Object.keys(states1GroupedByUndisOfCommonDis).length;
+                    var len2 = Object.keys(states2GroupedByUndisOfCommonDis).length;
+                    console.log("  Merging " + len1 + " × " + len2 + " keys. Should give max " + (len1 * len2) + " merged keys.");
+                    var finalMergedStateList = [];
+                    var countValidMergedKeys = 0;
+                    for (var group1key of Object.keys(states1GroupedByUndisOfCommonDis)) {
+                        var group1states = states1GroupedByUndisOfCommonDis[group1key];
+                        for (var group2key of Object.keys(states2GroupedByUndisOfCommonDis)) {
+                            var group2states = states2GroupedByUndisOfCommonDis[group2key];
+                            var mergedKey = this.mergeStates(group1key, group2key);
+                            if (yield* this.testCombinationShowIfValid(mergedKey, listUndis, commonDis)) {
+                                countValidMergedKeys++;
+                                finalMergedStateList.push(... this.mergeStateLists(group1states, group2states).filter(state => this.testMinesCount(state)));
+                            }
+                        }
+                    }
+                    console.log("    Valid merged keys: " + countValidMergedKeys + "; Merged states count: " + finalMergedStateList.length);
+
+                    nextStates.push(finalMergedStateList);
+                    nextStatesCorrespondingDis.push(disSet1.union(disSet2));
                 }
                 else {
                     nextStates.push(states[i]);
@@ -190,13 +222,14 @@ class CombiSolver {
 
         if (states.length > 0) {
             var validStates = states[0];
+            console.log("  Ending solver with all valid states: ", validStates);
 
             var fullProba = validStates.length;
             var countMines = 0;
             var subGraphProba = new Array(listUndis.length).fill(0);
             for (var validState of validStates) {
                 for (var i = 0; i < validState.length; i++) {
-                    if (validState[i]) {
+                    if (validState[i] == "m") {
                         subGraphProba[i]++;
                         countMines++;
                     }
@@ -212,9 +245,10 @@ class CombiSolver {
             }
             if (hasSolvableCells) {
                 this.end();
+                console.log("  Found unique solution: " + finalState);
                 for (var i = 0; i < listUndis.length; i++) {
                     var probaCount = subGraphProba[i];
-                    var cell = this.graph.toCell(listUndis[i]);
+                    var cell = this.field.keyToCell[listUndis[i]];
                     if (probaCount == validStates.length)
                         cell.rightClick(true);
                     else if (probaCount == 0)
@@ -235,7 +269,7 @@ class CombiSolver {
 
         // compute remaining probas
         var remainingCells = this.field.getCells(c => !c.isDiscovered && !c.isMarked
-                && !(this.graph.toKey(c) in this.undisProba));
+                && !(c.key in this.undisProba));
         var remainingCellsCount = remainingCells.length;
 
         // check if remaining mines are safe or are bombs for sure.
@@ -254,7 +288,7 @@ class CombiSolver {
 
         var remainingProba = this.undisRemainingMines / remainingCellsCount;
         for (var remainingCell of remainingCells) {
-            this.undisProba[this.graph.addCell(remainingCell)] = remainingProba;
+            this.undisProba[remainingCell.key] = remainingProba;
         }
 
         var allProbas = Object.values(this.undisProba);
@@ -262,7 +296,7 @@ class CombiSolver {
         var maxProba = Math.max(...allProbas);
         // show proba
         for (var cellKey of Object.keys(this.undisProba)) {
-            var cell = this.graph.toCell(cellKey);
+            var cell = this.field.keyToCell[cellKey];
             cell.solverProba = this.undisProba[cellKey];
             if (cell.solverProba == minProba)
                 cell.solverHighlight = "safest";
@@ -294,30 +328,43 @@ class CombiSolver {
 
 
 
+
+    *filterValidCombination(states, listUndis, listDis) {
+        var validStates = [];
+        for (var state of states) {
+            if (yield* this.testCombinationShowIfValid(state, listUndis, listDis))
+                validStates.push(state);
+        }
+        return validStates;
+    }
+
+
+
     verifySolvedCells(states) {
         var hasSolved = false;
-        var solution = [];
+        var solution = "";
         if (states.length > 0) {
             var stateSize = states[0].length;
             var stateCount = states.length;
-            solution = new Array(stateSize).fill(null);
             for (var i = 0; i < stateSize; i++) {
                 var countMine = 0;
                 var countSafe = 0;
                 for (var state of states) {
-                    if (state[i] === true)
+                    if (state[i] == "m")
                         countMine++;
-                    else if (state[i] === false)
+                    else if (state[i] == "s")
                         countSafe++;
                 }
                 if (countMine == stateCount) {
                     hasSolved = true;
-                    solution[i] = true;
+                    solution += "m";
                 }
                 else if (countSafe == stateCount) {
                     hasSolved = true;
-                    solution[i] = false;
+                    solution += "s";
                 }
+                else
+                    solution += "-";
             }
         }
         return {
@@ -327,20 +374,30 @@ class CombiSolver {
     }
 
 
+    *testCombinationShowIfValid(state, listUndis, listDis) {
+        var valid = this.testCombination(state, listUndis, listDis);
+        if (valid) {
+            this.highlightColoredCells(state, listUndis);
+            yield null;
+        }
+        return valid;
+    }
 
+    testMinesCount(state) {
+        var countMines = 0
+        for (var s of state) {
+            if (s == "m")
+                countMines++;
+        }
+        return countMines <= this.undisRemainingMines;
+    }
 
     testCombination(state, subGraphUndis, subGraphDis) {
-        var mapToState = {};
-        var countTrue = 0
-        for (var i = 0; i < subGraphUndis.length; i++) {
-            if (i < state.length && state[i] === true) {
-                countTrue++;
-            }
-            mapToState[subGraphUndis[i]] = i < state.length ? state[i] : null;
-        }
-        if (countTrue > this.undisRemainingMines) {
-            // you cannot have more mines than the number not yet found
+        if (!this.testMinesCount(state))
             return false;
+        var mapToState = {};
+        for (var i = 0; i < subGraphUndis.length; i++) {
+            mapToState[subGraphUndis[i]] = i < state.length ? state[i] : "-";
         }
 
         for (var disCell of subGraphDis) {
@@ -349,9 +406,9 @@ class CombiSolver {
             var countSafe = 0;
             var countUnknown = 0;
             for (var undisOfDis of this.graph.disToUndis[disCell]) {
-                if (mapToState[undisOfDis] === true)
+                if (mapToState[undisOfDis] == "m")
                     countMine++;
-                else if (mapToState[undisOfDis] === false)
+                else if (mapToState[undisOfDis] == "s")
                     countSafe++;
                 else
                     countUnknown++;
@@ -359,6 +416,8 @@ class CombiSolver {
             if (countMine + countUnknown < actualMine || countMine > actualMine)
                 return false;
         }
+
+
         return true;
     }
 
@@ -367,19 +426,42 @@ class CombiSolver {
         var retStateList = [];
         for (var state1 of stateList1) {
             for (var state2 of stateList2) {
-                var state = [];
-                for (var i = 0; i < state1.length && i < state2.length; i++) {
-                    state.push(state1[i] !== null ? state1[i] : state2[i]);
-                }
-                retStateList.push(state);
+                retStateList.push(this.mergeStates(state1, state2));
             }
         }
         return retStateList;
     }
 
-    mergeCellsSet(cells1, cells2) {
-        return cells1.concat(cells2.filter(i => cells1.indexOf(i) < 0));
+
+    mergeStates(state1, state2) {
+        var state = "";
+        for (var i = 0; i < state1.length && i < state2.length; i++) {
+            state += state1[i] !== "-" ? state1[i] : state2[i];
+        }
+        return state;
     }
+
+
+    groupStatesBySubsetState(states, keysIndex) {
+        var stateToKey = function(state, keysIndex) {
+            var ret = "";
+            for (var i = 0; i < state.length; i++) {
+                ret += keysIndex.includes(i) ? state[i] : "-";
+            }
+            return ret;
+        }
+
+        var ret = {};
+        for (var state of states) {
+            var key = stateToKey(state, keysIndex);
+            if (!(key in ret))
+                ret[key] = [];
+            ret[key].push(state);
+        }
+        return ret;
+    }
+
+
 
 
     end() {
@@ -396,7 +478,7 @@ class CombiSolver {
 
     highlightCells(keysList) {
         for (var cell of this.field.getAllCells()) {
-            cell.solverHighlight = keysList.includes(this.graph.toKey(cell)) ? "neutral" : null;
+            cell.solverHighlight = keysList.includes(cell.key) ? "neutral" : null;
         }
         this.field.renderDOM();
     }
@@ -408,11 +490,11 @@ class CombiSolver {
         }
         //console.log(mapToState);
         for (var cell of this.field.getAllCells()) {
-            var key = this.graph.toKey(cell);
+            var key = cell.key;
             if (key in mapToState) {
-                if (mapToState[key] == true)
+                if (mapToState[key] == "m")
                     cell.solverHighlight = "bomb";
-                else if (mapToState[key] == false)
+                else if (mapToState[key] == "s")
                     cell.solverHighlight = "safe";
                 else
                     cell.solverHighlight = "neutral";
@@ -430,49 +512,33 @@ class CombiSolver {
 
 
 class CombiGraph {
-    constructor() {
+    constructor(field) {
+        this.field = field;
         this.disToUndis = {};
         this.undisToDis = {};
         this.disValue = {};
         this.probaValues = {};
-        this.cellObjs = {};
         this.orderedUndis = [];
     }
 
     addLink(disCell, undisCell) {
         var disKey = this.addCellWithValue(disCell);
-        var undisKey = this.addCell(undisCell);
+        var undisKey = undisCell.key;
         if (!(disKey in this.disToUndis))
-            this.disToUndis[disKey] = [];
-        this.disToUndis[disKey].push(undisKey);
+            this.disToUndis[disKey] = new Set();
+        this.disToUndis[disKey].add(undisKey);
         if (!(undisKey in this.undisToDis))
-            this.undisToDis[undisKey] = [];
-        this.undisToDis[undisKey].push(disKey);
+            this.undisToDis[undisKey] = new Set();
+        this.undisToDis[undisKey].add(disKey);
     }
 
     addCellWithValue(cell) {
-        var key = this.addCell(cell);
+        var key = cell.key;
         if (!(key in this.disValue)) {
             var value = cell.minesAround - cell.countMarkedAround();
             this.disValue[key] = value;
         }
         return key;
-    }
-
-    addCell(cell) {
-        var key = this.toKey(cell);
-        if (!(key in this.cellObjs)) {
-            this.cellObjs[key] = cell;
-        }
-        return key;
-    }
-
-    toKey(cell) {
-        return cell.r + ":" + cell.c;
-    }
-
-    toCell(key) {
-        return this.cellObjs[key];
     }
 
 
@@ -535,19 +601,13 @@ class CombiGraph {
         discovered cells they have in common
         */
     disProximity(undis1, undis2) {
-        var count = 0;
-        var dis2List = this.undisToDis[undis2];
-        for (var dis1 of this.undisToDis[undis1]) {
-            if (dis2List.includes(dis1))
-                count++;
-        }
-        return count;
+        return this.undisToDis[undis1].union(this.undisToDis[undis2]).size;
     }
 
 
     distance(undis1, undis2) {
-        var c1 = this.toCell(undis1);
-        var c2 = this.toCell(undis2);
+        var c1 = this.field.keyToCell[undis1];
+        var c2 = this.field.keyToCell[undis2];
         return Math.abs(c1.r - c2.r) + Math.abs(c1.c - c2.c)
     }
 
