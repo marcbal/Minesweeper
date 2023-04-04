@@ -12,12 +12,12 @@
     </head>
     <body>
         <nav>
-            Grille :
+            Grid :
             <input id="input-width" type="number" min="4" max="30" value="8"/>
             ×
             <input id="input-height" type="number" min="4" max="30" value="8"/>
             <br>
-            Bombes :
+            Mines :
             <input id="input-mines" type="number" min="3" max="500" value="10"/>
             <br>
             <button onclick="changeSettings(8, 8, 10);">Small</button>
@@ -48,9 +48,10 @@
                             onchange="toggleAutoSolveMarkable()"/></td>
                 </tr>
                 <tr>
-                    <td class="solver-cell" title="Combination solver"></td>
-                    <td></td>
-                    <td><input id="solver-combi-auto" type="checkbox" title="Auto-solve combinations"
+                    <td class="solver-cell" title="Advanced solver"></td>
+                    <td><input id="solver-combi-show" type="checkbox" title="Show advanced solver results"
+                            onchange="toggleCombiSolverHints()"/></td>
+                    <td><input id="solver-combi-auto" type="checkbox" title="Advanced solver auto-solve"
                             onchange="toggleAutoSolveCombi()"/></td>
                 </tr>
             </table>

@@ -3,6 +3,7 @@ class Solver {
         this.tickTimer = null;
         this.autoSolveDiscoverable = false;
         this.autoSolveMarkable = false;
+        this.showCombiResults = false;
         this.autoSolveCombi = false;
         this.field = null;
 
@@ -18,21 +19,23 @@ class Solver {
     tick() {
         if (this.field === null || !this.field.minesPlaced || this.field.ended)
             return false;
-        if (this.autoSolveDiscoverable) {
+        if (this.autoSolveDiscoverable || this.field.discoverHints) {
             for (var cell of this.field.getCells(c => c.isSafeToDiscover())) {
                 this.stopCombiSolver(); // bypassing combi solver du to simpler solving going on
-                cell.leftClick(true);
+                if (this.autoSolveDiscoverable)
+                    cell.leftClick(true);
                 return;
             }
         }
-        if (this.autoSolveMarkable) {
+        if (this.autoSolveMarkable || this.field.markingHints) {
             for (var cell of this.field.getCells(c => c.isSafeToMark())) {
                 this.stopCombiSolver(); // bypassing combi solver du to simpler solving going on
-                cell.rightClick(true);
+                if (this.autoSolveMarkable)
+                    cell.rightClick(true);
                 return;
             }
         }
-        if (this.autoSolveCombi && !this.field.solverProbaWaitingPlayer) {
+        if ((this.autoSolveCombi || this.showCombiResults)) {
             if (!this.isCombiSolverRunning()) {
                  this.startCombiSolver();
             }
@@ -49,7 +52,7 @@ class Solver {
     }
 
     startCombiSolver() {
-        this.combiSolver = new CombiSolver(this.field);
+        this.combiSolver = new CombiSolver(this, this.field);
     }
 
     stopCombiSolver() {
@@ -83,7 +86,8 @@ class Solver {
 
 
 class CombiSolver {
-    constructor(field) {
+    constructor(solver, field) {
+        this.mainSolver = solver;
         this.field = field;
         this.field.lockInteractions = true;
 
@@ -138,7 +142,7 @@ class CombiSolver {
                     finalState = this.mergeStateLists([finalState], [subStateSol.solution])[0];
                 }
             }
-            if (hasSolvableCells) {
+            if (hasSolvableCells && this.mainSolver.autoSolveCombi) {
                 this.end();
                 console.log("  Found premature solution: " + finalState);
                 for (var i = 0; i < listUndis.length; i++) {
@@ -244,7 +248,7 @@ class CombiSolver {
                     break;
                 }
             }
-            if (hasSolvableCells) {
+            if (hasSolvableCells && this.mainSolver.autoSolveCombi) {
                 this.end();
                 console.log("  Found unique solution: " + finalState);
                 for (var i = 0; i < listUndis.length; i++) {

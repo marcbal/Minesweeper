@@ -10,6 +10,7 @@ var checkbox_solver_clickable_show = document.getElementById("solver-clickable-s
 var checkbox_solver_clickable_auto = document.getElementById("solver-clickable-auto");
 var checkbox_solver_markable_show = document.getElementById("solver-markable-show");
 var checkbox_solver_markable_auto = document.getElementById("solver-markable-auto");
+var checkbox_solver_combi_show = document.getElementById("solver-combi-show");
 var checkbox_solver_combi_auto = document.getElementById("solver-combi-auto");
 
 var input_solver_auto_speed = document.getElementById("solver-auto-speed");
@@ -19,6 +20,7 @@ var field = null;
 var solver = new Solver();
 toggleAutoSolveDiscoverable();
 toggleAutoSolveMarkable();
+toggleCombiSolverHints();
 toggleAutoSolveCombi();
 updateAutoSolveSpeed();
 
@@ -70,8 +72,20 @@ function toggleAutoSolveMarkable() {
     solver.autoSolveMarkable = checkbox_solver_markable_auto.checked;
 }
 
+function toggleCombiSolverHints() {
+    solver.showCombiResults = checkbox_solver_combi_show.checked;
+    if (!solver.showCombiResults && solver.autoSolveCombi) {
+        checkbox_solver_combi_auto.checked = false;
+        toggleAutoSolveCombi();
+    }
+}
+
 function toggleAutoSolveCombi() {
     solver.autoSolveCombi = checkbox_solver_combi_auto.checked;
+    if (solver.autoSolveCombi && !solver.showCombiResults) {
+        checkbox_solver_combi_show.checked = true;
+        toggleCombiSolverHints();
+    }
 }
 
 function updateAutoSolveSpeed() {
